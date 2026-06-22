@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>伯努利原理 · 机翼升力仿真</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=ZCOOL+XiaoWei&family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;500;700&family=Noto+Sans+SC:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f4f6fa;
+    --panel: #ffffff;
+    --border: #d8e2ef;
+    --accent: #1a5fa8;
+    --accent2: #c0420a;
+    --green: #1a7a4a;
+    --amber: #a06800;
+    --text: #1a2636;
+    --dim: #6a82a0;
+    --light: #e8eef8;
+    --shadow: 0 2px 16px rgba(30,60,120,0.10);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Serif SC', 'Noto Sans SC', serif;
+    min-height: 100vh;
+  }
+  .page { max-width:1280px; margin:0 auto; padding:20px 18px; }
+
+  /* Two-column layout */
+  .main-layout {
+    display:grid;
+    grid-template-columns: 1fr 300px;
+    gap:14px; align-items:start;
+  }
+  @media(max-width:820px){ .main-layout{grid-template-columns:1fr;} }
+
+  .sim-col { display:flex; flex-direction:column; gap:12px; }
+
+  /* Panel */
+  .panel {
+    background:var(--panel); border:1px solid var(--border);
+    border-radius:12px; box-shadow:var(--shadow); overflow:hidden;
+  }
+  .panel-head {
+    padding:9px 14px; border-bottom:1px solid var(--border);
+    background:#f8fafd;
+    display:flex; align-items:center; justify-content:space-between;
+    gap:10px; flex-wrap:wrap;
+  }
+  .panel-title {
+    font-family:'Ma Shan Zheng','Noto Serif SC',serif;
+    font-size:15px; color:var(--accent); letter-spacing:2px;
+    display:flex; align-items:center; gap:7px;
+  }
+  .panel-title::before {
+    content:''; display:inline-block;
+    width:4px; height:15px; background:var(--accent); border-radius:2px;
+  }
+
+  /* Canvas */
+  #wingCanvas { width:100%; height:370px; display:block; background:#edf1f8; }
+
+  /* Toggle */
+  .toggle-row { display:flex; gap:5px; flex-wrap:wrap; }
+  .toggle-btn {
+    padding:3px 11px;
+    font-family:'Noto Sans SC',sans-serif; font-size:11px;
+    border-radius:20px; border:1px solid var(--border);
+    background:transparent; color:var(--dim); cursor:pointer; transition:all .18s;
+  }
+  .toggle-btn.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+
+  /* Legend */
+  .legend-row {
+    display:flex; gap:12px; flex-wrap:wrap;
+    padding:8px 14px; border-top:1px solid var(--border); background:#f8fafd;
+  }
+  .legend-item {
+    display:flex; align-items:center; gap:5px;
+    font-family:'Noto Sans SC',sans-serif; font-size:10px; color:var(--dim);
+  }
+  .ldot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+
+  /* Data strip */
+  .data-strip { display:grid; grid-template-columns:repeat(4,1fr); }
+  .data-cell {
+    padding:12px 8px; text-align:center;
+    border-right:1px solid var(--border); transition:background .2s;
+  }
+  .data-cell:last-child{ border-right:none; }
+  .data-cell:hover{ background:var(--light); }
+  .dc-label {
+    font-family:'Noto Serif SC',serif; font-size:11px;
+    color:var(--dim); margin-bottom:4px; letter-spacing:.5px;
+  }
+  .dc-value {
+    font-family:'Noto Sans SC',sans-serif;
+    font-size:21px; font-weight:500; line-height:1;
+  }
+  .dc-unit { font-size:10px; color:var(--dim); margin-top:2px; font-family:'Noto Sans SC',sans-serif; }
+
+  /* Pressure diff panel */
+  .pd-wrap { padding:14px 16px; }
+  .pd-title {
+    font-family:'Noto Serif SC',serif; font-size:12px;
+    color:var(--dim); letter-spacing:1.5px; margin-bottom:10px;
+  }
+  .pd-bars { display:flex; align-items:center; gap:14px; }
+  .pd-side { flex:1; }
+  .pd-side-label {
+    font-family:'Noto Serif SC',serif; font-size:11px;
+    margin-bottom:4px; display:flex; justify-content:space-between; align-items:center;
+  }
+  .pd-track {
+    height:18px; background:var(--light);
+    border-radius:4px; overflow:hidden; border:1px solid var(--border);
+  }
+  .pd-fill { height:100%; border-radius:4px; transition:width .35s ease; }
+  .pd-mid {
+    display:flex; flex-direction:column; align-items:center;
+    gap:3px; min-width:56px;
+  }
+  .pd-mid-label {
+    font-family:'Ma Shan Zheng',serif; font-size:11px; color:var(--amber);
+  }
+  .pd-mid-val {
+    font-family:'Noto Sans SC',sans-serif;
+    font-size:15px; font-weight:700; color:var(--amber);
+  }
+
+  /* Formula row */
+  .formula-row {
+    display:flex; gap:10px; align-items:center;
+    padding:9px 16px; background:#f8fafd;
+    border-top:1px solid var(--border); flex-wrap:wrap;
+  }
+  .fblock { display:flex; flex-direction:column; gap:1px; }
+  .fsub { font-family:'Noto Sans SC',sans-serif; font-size:9px; color:var(--dim); letter-spacing:1px; }
+  .feq {
+    font-family:'Noto Serif SC',serif; font-size:13px; color:var(--text);
+  }
+  .feq .fb { color:var(--accent); font-weight:700; }
+  .feq .fr { color:var(--accent2); font-weight:700; }
+  .feq .fa { color:var(--amber); font-weight:700; }
+  .fdiv { width:1px; height:34px; background:var(--border); }
+
+  /* Right control column */
+  .ctrl-col { display:flex; flex-direction:column; gap:12px; }
+  .ctrl-panel { padding:16px; }
+  .ctrl-title {
+    font-family:'Ma Shan Zheng','Noto Serif SC',serif;
+    font-size:15px; color:var(--accent); letter-spacing:3px;
+    margin-bottom:14px;
+    display:flex; align-items:center; gap:7px;
+  }
+  .ctrl-title::before {
+    content:''; display:inline-block;
+    width:4px; height:15px; background:var(--accent); border-radius:2px;
+  }
+  .ctrl-item { margin-bottom:18px; }
+  .ctrl-item:last-child{ margin-bottom:0; }
+  .ctrl-row {
+    display:flex; justify-content:space-between; align-items:baseline; margin-bottom:7px;
+  }
+  .ctrl-name {
+    font-family:'Noto Serif SC',serif; font-size:13px; color:var(--text); letter-spacing:.5px;
+  }
+  .ctrl-readout {
+    font-family:'Noto Sans SC',sans-serif; font-size:20px; font-weight:500; line-height:1;
+  }
+  .ctrl-unit { font-size:11px; color:var(--dim); font-family:'Noto Sans SC',sans-serif; margin-left:2px; }
+
+  input[type=range] {
+    -webkit-appearance:none; width:100%; height:5px;
+    border-radius:3px; outline:none; cursor:pointer;
+  }
+  input[type=range].blue   { background:linear-gradient(90deg,var(--accent) var(--pct,50%),var(--border) var(--pct,50%)); }
+  input[type=range].orange { background:linear-gradient(90deg,var(--accent2) var(--pct,50%),var(--border) var(--pct,50%)); }
+  input[type=range].green  { background:linear-gradient(90deg,var(--green) var(--pct,50%),var(--border) var(--pct,50%)); }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:20px; height:20px; border-radius:50%;
+    cursor:pointer; transition:transform .12s;
+    border:3px solid white; box-shadow:0 1px 6px rgba(0,0,0,.22);
+  }
+  input[type=range].blue::-webkit-slider-thumb   { background:var(--accent); }
+  input[type=range].orange::-webkit-slider-thumb { background:var(--accent2); }
+  input[type=range].green::-webkit-slider-thumb  { background:var(--green); }
+  input[type=range]::-webkit-slider-thumb:hover  { transform:scale(1.25); }
+  .ctrl-range-labels {
+    display:flex; justify-content:space-between;
+    font-family:'Noto Sans SC',sans-serif; font-size:10px; color:var(--dim); margin-top:3px;
+  }
+
+  /* Lift meter */
+  .lift-panel { padding:14px 16px; }
+  .lm-head {
+    display:flex; justify-content:space-between; margin-bottom:8px;
+    font-family:'Noto Serif SC',serif; font-size:13px; color:var(--dim); letter-spacing:1px;
+  }
+  .lm-val { font-family:'Noto Sans SC',sans-serif; font-size:13px; font-weight:500; color:var(--amber); }
+  .lm-track {
+    height:13px; background:var(--light); border-radius:7px;
+    border:1px solid var(--border); overflow:hidden; margin-bottom:5px;
+  }
+  .lm-fill {
+    height:100%; border-radius:7px;
+    background:linear-gradient(90deg,#1a7a4a,#a06800,#c0420a);
+    transition:width .35s ease;
+  }
+  .lm-leg {
+    display:flex; justify-content:space-between;
+    font-family:'Noto Sans SC',sans-serif; font-size:10px; color:var(--dim);
+  }
+
+  /* Info */
+  .info-card {
+    padding:13px 16px;
+    background:#fffef5; border:1px solid #e2d090;
+    border-radius:10px;
+    font-family:'Noto Serif SC',serif; font-size:12px;
+    line-height:1.95; color:#5a4800;
+  }
+  .info-card strong {
+    font-family:'Ma Shan Zheng',serif; font-size:14px;
+    display:block; margin-bottom:5px;
+    color:#7a5a00; letter-spacing:2px;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+
+  <div class="main-layout">
+
+    <!-- LEFT -->
+    <div class="sim-col">
+
+      <!-- Canvas -->
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">实时气流仿真</div>
+          <div class="toggle-row">
+            <button class="toggle-btn active" id="btn-streamlines" onclick="toggleLayer('streamlines')">流线</button>
+            <button class="toggle-btn active" id="btn-pressure"    onclick="toggleLayer('pressure')">压力云图</button>
+            <button class="toggle-btn active" id="btn-vectors"     onclick="toggleLayer('vectors')">速度箭头</button>
+            <button class="toggle-btn active" id="btn-labels"      onclick="toggleLayer('labels')">数值标注</button>
+          </div>
+        </div>
+        <canvas id="wingCanvas"></canvas>
+        <div class="legend-row">
+          <div class="legend-item"><div class="ldot" style="background:#1060c0"></div>低压区（上表面·流速快）</div>
+          <div class="legend-item"><div class="ldot" style="background:#c04010"></div>高压区（下表面·流速慢）</div>
+          <div class="legend-item"><div class="ldot" style="background:#1a7a4a"></div>气流流线</div>
+          <div class="legend-item"><div class="ldot" style="background:#a06800"></div>升力方向</div>
+        </div>
+      </div>
+
+      <!-- Data strip -->
+      <div class="panel">
+        <div class="data-strip">
+          <div class="data-cell">
+            <div class="dc-label">上表面流速 v<sub>上</sub></div>
+            <div class="dc-value" id="v-top" style="color:var(--accent)">—</div>
+            <div class="dc-unit">m/s</div>
+          </div>
+          <div class="data-cell">
+            <div class="dc-label">上表面压强 P<sub>上</sub></div>
+            <div class="dc-value" id="p-top" style="color:var(--accent)">—</div>
+            <div class="dc-unit">Pa（表压）</div>
+          </div>
+          <div class="data-cell">
+            <div class="dc-label">下表面流速 v<sub>下</sub></div>
+            <div class="dc-value" id="v-bot" style="color:var(--accent2)">—</div>
+            <div class="dc-unit">m/s</div>
+          </div>
+          <div class="data-cell">
+            <div class="dc-label">下表面压强 P<sub>下</sub></div>
+            <div class="dc-value" id="p-bot" style="color:var(--accent2)">—</div>
+            <div class="dc-unit">Pa（表压）</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pressure diff + formula -->
+      <div class="panel">
+        <div class="pd-wrap">
+          <div class="pd-title">▸ 上下压强差 → 产生升力原理</div>
+          <div class="pd-bars">
+            <div class="pd-side">
+              <div class="pd-side-label">
+                <span style="color:var(--accent)">上表面（低压）</span>
+                <span id="p-top-bar-val" style="color:var(--accent);font-family:'Noto Sans SC';font-size:11px">—</span>
+              </div>
+              <div class="pd-track">
+                <div class="pd-fill" id="p-top-bar" style="background:linear-gradient(90deg,#7ab8f0,#1a5fa8);width:30%"></div>
+              </div>
+            </div>
+            <div class="pd-mid">
+              <div class="pd-mid-label">压差 ΔP</div>
+              <div class="pd-mid-val" id="delta-p">—</div>
+              <svg width="22" height="42" viewBox="0 0 22 42">
+                <defs>
+                  <marker id="ah" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+                    <path d="M0,0 L6,3 L0,6 Z" fill="#a06800"/>
+                  </marker>
+                </defs>
+                <line x1="11" y1="38" x2="11" y2="7" stroke="#a06800" stroke-width="2.5" marker-end="url(#ah)" opacity=".85"/>
+                <text x="11" y="4" text-anchor="middle" fill="#a06800" font-size="7" font-family="Noto Sans SC">F↑</text>
+              </svg>
+            </div>
+            <div class="pd-side">
+              <div class="pd-side-label">
+                <span style="color:var(--accent2)">下表面（高压）</span>
+                <span id="p-bot-bar-val" style="color:var(--accent2);font-family:'Noto Sans SC';font-size:11px">—</span>
+              </div>
+              <div class="pd-track">
+                <div class="pd-fill" id="p-bot-bar" style="background:linear-gradient(90deg,#f0a06a,#c0420a);width:60%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="formula-row">
+          <div class="fblock">
+            <div class="fsub">伯努利方程</div>
+            <div class="feq">P + ½ρv² = 常数</div>
+          </div>
+          <div class="fdiv"></div>
+          <div class="fblock">
+            <div class="fsub">速度·压强</div>
+            <div class="feq"><span class="fb">v上↑ P上↓</span> ，<span class="fr">v下↓ P下↑</span></div>
+          </div>
+          <div class="fdiv"></div>
+          <div class="fblock">
+            <div class="fsub">升力公式</div>
+            <div class="feq">F = <span class="fa">ΔP</span> · S翼</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT -->
+    <div class="ctrl-col">
+
+      <div class="panel ctrl-panel">
+        <div class="ctrl-title">参数调节</div>
+
+        <div class="ctrl-item">
+          <div class="ctrl-row">
+            <span class="ctrl-name">来流风速</span>
+            <span><span class="ctrl-readout" id="val-speed" style="color:var(--accent)">30</span><span class="ctrl-unit">m/s</span></span>
+          </div>
+          <input type="range" class="blue" id="slider-speed" min="5" max="80" value="30" oninput="updateParams(this)">
+          <div class="ctrl-range-labels"><span>5 m/s</span><span>80 m/s</span></div>
+        </div>
+
+        <div class="ctrl-item">
+          <div class="ctrl-row">
+            <span class="ctrl-name">迎角（攻角）</span>
+            <span><span class="ctrl-readout" id="val-aoa" style="color:var(--accent2)">8</span><span class="ctrl-unit">°</span></span>
+          </div>
+          <input type="range" class="orange" id="slider-aoa" min="-5" max="20" value="8" oninput="updateParams(this)">
+          <div class="ctrl-range-labels"><span>-5°</span><span>20°</span></div>
+        </div>
+
+        <div class="ctrl-item">
+          <div class="ctrl-row">
+            <span class="ctrl-name">翼型弯度</span>
+            <span><span class="ctrl-readout" id="val-camber" style="color:var(--green)">12</span><span class="ctrl-unit">%</span></span>
+          </div>
+          <input type="range" class="green" id="slider-camber" min="0" max="25" value="12" oninput="updateParams(this)">
+          <div class="ctrl-range-labels"><span>0（对称翼）</span><span>25%</span></div>
+        </div>
+      </div>
+
+      <!-- Lift meter -->
+      <div class="panel lift-panel">
+        <div class="lm-head">
+          <span>升力强度指示</span>
+          <span class="lm-val" id="lift-val">— Pa</span>
+        </div>
+        <div class="lm-track"><div class="lm-fill" id="lift-bar" style="width:0%"></div></div>
+        <div class="lm-leg"><span>无升力</span><span>中等</span><span>强升力</span></div>
+      </div>
+
+      <!-- Info -->
+      <div class="info-card">
+        <strong>📖 实验原理</strong>
+        机翼<b>上表面</b>弯曲，气流路程更长，流速加快，依据伯努利方程，压强随之降低；<b>下表面</b>较平，气流较慢，压强较高。
+        <br><br>
+        上下表面的<b>压强差 ΔP</b> 即产生向上的<b>升力</b>。风速越大、迎角越大、弯度越高，升力越显著。
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('wingCanvas');
+const ctx = canvas.getContext('2d');
+let W, H, animFrame = 0;
+let params = { speed:30, aoa:8, camber:12 };
+let layers = { streamlines:true, pressure:true, vectors:true, labels:true };
+
+function resize() {
+  const r = canvas.getBoundingClientRect();
+  canvas.width  = r.width  * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  W = r.width; H = r.height;
+}
+
+// NACA 4-digit
+function getNACA(m_pct, p_frac, t_pct, nPts=140) {
+  const m=m_pct/100, p=p_frac, t=t_pct/100;
+  const upper=[], lower=[];
+  for(let i=0;i<=nPts;i++){
+    const x=(1-Math.cos(i/nPts*Math.PI))/2;
+    const yt=(t/0.2)*(0.2969*Math.sqrt(x)-0.1260*x-0.3516*x*x+0.2843*x*x*x-0.1015*x*x*x*x);
+    let yc=0,dyc=0;
+    if(m>0&&p>0){
+      if(x<p){yc=m/(p*p)*(2*p*x-x*x);dyc=m/(p*p)*(2*p-2*x);}
+      else   {yc=m/((1-p)*(1-p))*(1-2*p+2*p*x-x*x);dyc=m/((1-p)*(1-p))*(2*p-2*x);}
+    }
+    const th=Math.atan(dyc);
+    upper.push({x:x-yt*Math.sin(th),y:yc+yt*Math.cos(th)});
+    lower.push({x:x+yt*Math.sin(th),y:yc-yt*Math.cos(th)});
+  }
+  return {upper,lower};
+}
+
+function getWingProfile(camberPct, aoaDeg) {
+  const {upper:uN,lower:lN} = getNACA(camberPct*0.32, 0.4, 12);
+  const leX=W*0.10, chord=W*0.72, cy=H*0.50, scaleY=chord*0.78;
+  const aoa=aoaDeg*Math.PI/180;
+  function tr(nx,ny){
+    const lx=nx*chord, ly=-ny*scaleY;
+    return { x:leX+lx*Math.cos(-aoa)-ly*Math.sin(-aoa), y:cy+lx*Math.sin(-aoa)+ly*Math.cos(-aoa) };
+  }
+  const upper=uN.map(p=>tr(p.x,p.y)), lower=lN.map(p=>tr(p.x,p.y));
+  const qc=tr(0.25,0);
+  return {upper,lower,cx:qc.x,cy,chord,leX};
+}
+
+function calcAero(){
+  const rho=1.225, v0=params.speed;
+  const camber=params.camber/100, aoa=params.aoa;
+  const vTop=v0*(1+camber*1.8+Math.max(0,aoa)*0.026);
+  const vBot=v0*(1-camber*0.5-Math.max(0,aoa)*0.013);
+  const pTop=0.5*rho*(v0*v0-vTop*vTop);
+  const pBot=0.5*rho*(v0*v0-vBot*vBot);
+  return {vTop,vBot,pTop,pBot,deltaP:pBot-pTop,rho,v0};
+}
+
+function drawFrame(){
+  const r=canvas.getBoundingClientRect();
+  if(Math.abs(r.width-W)>2||Math.abs(r.height-H)>2) resize();
+  ctx.clearRect(0,0,W,H);
+
+  // bg
+  const bg=ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0,'#edf2fa'); bg.addColorStop(1,'#e6ecf5');
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+
+  // grid
+  ctx.save();
+  ctx.strokeStyle='rgba(180,200,230,0.28)'; ctx.lineWidth=0.5;
+  for(let x=0;x<W;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=0;y<H;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  ctx.restore();
+
+  animFrame+=0.016;
+  const wd=getWingProfile(params.camber,params.aoa);
+  const aero=calcAero();
+
+  if(layers.pressure)    drawPressure(wd,aero);
+  if(layers.streamlines) drawStreamlines(wd,aero);
+  drawWing(wd);
+  if(layers.vectors)     drawVectors(wd,aero);
+  drawLiftArrow(wd,aero);
+  if(layers.labels)      drawLabels(wd,aero);
+  drawFlowHint();
+}
+
+function drawPressure(wd,aero){
+  const {upper,lower,leX,chord}=wd;
+  const img=ctx.createImageData(W|0,H|0);
+  const allY=[...upper,...lower].map(p=>p.y);
+  const yMin=Math.min(...allY), yMax=Math.max(...allY);
+
+  for(let px=0;px<W;px+=3){
+    const xf=(px-leX)/chord;
+    if(xf<-0.1||xf>1.1) continue;
+    const idx=Math.min(upper.length-1,Math.max(0,Math.floor(xf*upper.length)));
+    if(!upper[idx]||!lower[idx]) continue;
+    const uy=upper[idx].y, ly=lower[idx].y;
+
+    for(let py=Math.max(0,yMin-H*0.2)|0;py<Math.min(H,yMax+H*0.2);py+=3){
+      let pressure=0,alpha=0;
+      if(py<uy-1){const d=uy-py,f=Math.max(0,1-d/(H*0.22));pressure=aero.pTop*f;alpha=f*0.48;}
+      else if(py>ly+1){const d=py-ly,f=Math.max(0,1-d/(H*0.22));pressure=aero.pBot*f;alpha=f*0.48;}
+      if(alpha<0.02) continue;
+
+      let r,g,b;
+      if(pressure<0){const t=Math.min(1,Math.abs(pressure)/500);r=40+60*t|0;g=120+80*t|0;b=200+55*t|0;}
+      else{const t=Math.min(1,pressure/500);r=200+55*t|0;g=100-40*t|0;b=60-30*t|0;}
+      for(let dx=0;dx<3;dx++) for(let dy=0;dy<3;dy++){
+        const i=((py+dy)*(W|0)+(px+dx))*4;
+        if(i<0||i>=img.data.length) continue;
+        img.data[i]=r;img.data[i+1]=g;img.data[i+2]=b;img.data[i+3]=alpha*170|0;
+      }
+    }
+  }
+  ctx.putImageData(img,0,0);
+}
+
+function drawStreamlines(wd,aero){
+  const {upper,lower,leX,chord}=wd;
+  const nLines=16;
+  const mi=upper.length>>1;
+  const wingMidY=upper[mi]&&lower[mi]?(upper[mi].y+lower[mi].y)/2:H*0.5;
+
+  for(let i=0;i<nLines;i++){
+    const yFrac=(i+0.5)/nLines;
+    const yStart=H*0.05+yFrac*H*0.90;
+    const isUp=yStart<wingMidY;
+    ctx.beginPath(); let py=yStart; ctx.moveTo(0,py);
+
+    for(let sx=0;sx<=W+60;sx+=4){
+      const xf=(sx-leX)/chord;
+      if(xf>=-0.12&&xf<=1.08){
+        const idx=Math.min(upper.length-1,Math.max(0,Math.floor(xf*upper.length)));
+        if(upper[idx]&&lower[idx]){
+          const target=isUp
+            ?upper[idx].y-(aero.v0/aero.vTop)*H*0.058*(yFrac<0.5?1:0.3)
+            :lower[idx].y+(aero.v0/aero.vBot)*H*0.048*(yFrac>0.5?1:0.3);
+          py+=(target-py)*(isUp?0.10:0.08);
+        }
+      }
+      ctx.lineTo(sx,py);
+    }
+    const a=0.18+0.10*Math.sin(i*1.4);
+    ctx.strokeStyle=isUp?`rgba(20,100,210,${a})`:`rgba(200,70,20,${a})`;
+    ctx.lineWidth=1.1; ctx.stroke();
+
+    // dots
+    for(let d=0;d<3;d++){
+      const dt=((animFrame*aero.v0*0.007+i*0.068+d*0.33))%1;
+      const dotX=dt*(W+60);
+      const xf2=(dotX-leX)/chord;
+      let dotY=yStart;
+      if(xf2>0.02&&xf2<0.98){
+        const idx=Math.min(upper.length-1,Math.floor(xf2*upper.length));
+        if(upper[idx]&&lower[idx])
+          dotY=isUp?upper[idx].y-(aero.v0/aero.vTop)*H*0.054:lower[idx].y+(aero.v0/aero.vBot)*H*0.044;
+      }
+      ctx.beginPath(); ctx.arc(dotX,dotY,2.6,0,Math.PI*2);
+      ctx.fillStyle=isUp?'rgba(30,130,220,0.82)':'rgba(200,80,20,0.82)'; ctx.fill();
+    }
+  }
+}
+
+function drawWing(wd){
+  const {upper,lower}=wd;
+  if(!upper.length) return;
+  const topY=Math.min(...upper.map(p=>p.y));
+  const botY=Math.max(...lower.map(p=>p.y));
+
+  ctx.save();
+  ctx.shadowBlur=18; ctx.shadowColor='rgba(20,60,140,0.2)';
+  ctx.beginPath();
+  ctx.moveTo(upper[0].x,upper[0].y);
+  for(let i=1;i<upper.length;i++) ctx.lineTo(upper[i].x,upper[i].y);
+  for(let i=lower.length-1;i>=0;i--) ctx.lineTo(lower[i].x,lower[i].y);
+  ctx.closePath();
+  const g=ctx.createLinearGradient(0,topY,0,botY);
+  g.addColorStop(0,'#4a8ed4'); g.addColorStop(0.28,'#2060a8');
+  g.addColorStop(0.65,'#0f3d7a'); g.addColorStop(1,'#08224a');
+  ctx.fillStyle=g; ctx.fill(); ctx.restore();
+
+  // outline
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(upper[0].x,upper[0].y);
+  for(let i=1;i<upper.length;i++) ctx.lineTo(upper[i].x,upper[i].y);
+  for(let i=lower.length-1;i>=0;i--) ctx.lineTo(lower[i].x,lower[i].y);
+  ctx.closePath();
+  ctx.strokeStyle='rgba(20,80,180,0.5)'; ctx.lineWidth=1.5; ctx.stroke(); ctx.restore();
+
+  // specular
+  ctx.save();
+  const h1=Math.floor(upper.length*0.03), h2=Math.floor(upper.length*0.38);
+  ctx.beginPath(); ctx.moveTo(upper[h1].x,upper[h1].y+2);
+  for(let i=h1+1;i<=h2;i++) ctx.lineTo(upper[i].x,upper[i].y+2);
+  ctx.strokeStyle='rgba(200,228,255,0.5)'; ctx.lineWidth=4;
+  ctx.shadowBlur=6; ctx.shadowColor='rgba(160,210,255,0.35)'; ctx.stroke();
+  ctx.beginPath(); ctx.arc(upper[0].x,upper[0].y,5,0,Math.PI*2);
+  ctx.fillStyle='#3a80d0'; ctx.shadowBlur=10; ctx.shadowColor='#3a80d0'; ctx.fill();
+  ctx.restore();
+}
+
+function drawVectors(wd,aero){
+  const {upper,lower}=wd;
+  [0.18,0.36,0.55,0.74].forEach(xf=>{
+    const idx=Math.min(upper.length-1,Math.floor(xf*upper.length));
+    if(!upper[idx]||!lower[idx]) return;
+    const uLen=(aero.vTop/80)*42, lLen=(aero.vBot/80)*42;
+    drawArrow(upper[idx].x-uLen/2,upper[idx].y-20,upper[idx].x+uLen/2,upper[idx].y-20,'rgba(20,100,210,0.72)',1.8);
+    drawArrow(lower[idx].x-lLen/2,lower[idx].y+20,lower[idx].x+lLen/2,lower[idx].y+20,'rgba(200,70,20,0.72)',1.8);
+  });
+}
+
+function drawArrow(x1,y1,x2,y2,col,lw){
+  ctx.save();
+  ctx.strokeStyle=col; ctx.fillStyle=col; ctx.lineWidth=lw;
+  ctx.shadowBlur=4; ctx.shadowColor=col;
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  const a=Math.atan2(y2-y1,x2-x1);
+  ctx.beginPath(); ctx.moveTo(x2,y2);
+  ctx.lineTo(x2-7*Math.cos(a-0.4),y2-7*Math.sin(a-0.4));
+  ctx.lineTo(x2-7*Math.cos(a+0.4),y2-7*Math.sin(a+0.4));
+  ctx.closePath(); ctx.fill(); ctx.restore();
+}
+
+function drawLabels(wd,aero){
+  const {upper,lower}=wd;
+  const li=Math.floor(upper.length*0.32);
+  if(!upper[li]||!lower[li]) return;
+
+  // upper label — far above wing
+  const uLY = upper[li].y - H*0.16;
+  const lLY = lower[li].y + H*0.16;
+  const ux=upper[li].x, lx=lower[li].x;
+  const bw=152, bh=40;
+
+  ctx.save();
+  ctx.textAlign='center';
+
+  // upper box
+  rRect(ctx, ux-bw/2, uLY-bh/2, bw, bh, 7, 'rgba(218,234,255,0.93)', 'rgba(70,130,220,0.38)');
+  // dashed connector
+  dLine(ux, uLY+bh/2+1, upper[li].x, upper[li].y-4, 'rgba(70,130,220,0.32)');
+  ctx.fillStyle='#0d4090';
+  ctx.font=`600 12px 'Noto Sans SC',sans-serif`;
+  ctx.fillText(`v上 = ${aero.vTop.toFixed(1)} m/s`, ux, uLY-4);
+  ctx.fillStyle='rgba(18,70,160,0.62)';
+  ctx.font=`11px 'Noto Serif SC',serif`;
+  ctx.fillText(`P上 = ${aero.pTop.toFixed(0)} Pa（低压）`, ux, uLY+13);
+
+  // lower box
+  rRect(ctx, lx-bw/2, lLY-bh/2, bw, bh, 7, 'rgba(255,228,210,0.93)', 'rgba(190,90,30,0.38)');
+  dLine(lx, lLY-bh/2-1, lower[li].x, lower[li].y+4, 'rgba(190,90,30,0.32)');
+  ctx.fillStyle='#7a2200';
+  ctx.font=`600 12px 'Noto Sans SC',sans-serif`;
+  ctx.fillText(`v下 = ${aero.vBot.toFixed(1)} m/s`, lx, lLY-4);
+  ctx.fillStyle='rgba(150,50,0,0.62)';
+  ctx.font=`11px 'Noto Serif SC',serif`;
+  ctx.fillText(`P下 = ${aero.pBot.toFixed(0)} Pa（高压）`, lx, lLY+13);
+
+  ctx.restore();
+}
+
+function rRect(ctx,x,y,w,h,r,fill,stroke){
+  ctx.save();
+  ctx.beginPath();
+  if(ctx.roundRect) ctx.roundRect(x,y,w,h,r);
+  else{ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.arcTo(x+w,y,x+w,y+r,r);ctx.lineTo(x+w,y+h-r);ctx.arcTo(x+w,y+h,x+w-r,y+h,r);ctx.lineTo(x+r,y+h);ctx.arcTo(x,y+h,x,y+h-r,r);ctx.lineTo(x,y+r);ctx.arcTo(x,y,x+r,y,r);ctx.closePath();}
+  ctx.fillStyle=fill; ctx.fill();
+  if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=1;ctx.stroke();}
+  ctx.restore();
+}
+
+function dLine(x1,y1,x2,y2,color){
+  ctx.save(); ctx.setLineDash([4,4]);
+  ctx.strokeStyle=color; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  ctx.setLineDash([]); ctx.restore();
+}
+
+function drawLiftArrow(wd,aero){
+  if(aero.deltaP<=5) return;
+  const {upper,lower}=wd;
+  const li=Math.floor(upper.length*0.42);
+  if(!upper[li]||!lower[li]) return;
+  const midY=(upper[li].y+lower[li].y)/2;
+  const ax=upper[li].x+W*0.055;
+  const aLen=Math.min(H*0.15,(aero.deltaP/700)*H*0.20);
+  ctx.save();
+  ctx.shadowBlur=10; ctx.shadowColor='rgba(160,120,0,0.35)';
+  drawArrow(ax,midY+aLen*0.5,ax,midY-aLen*0.5,'rgba(155,105,0,0.88)',3);
+  ctx.font=`bold 11px 'Ma Shan Zheng','Noto Serif SC',serif`;
+  ctx.fillStyle='#9a6800'; ctx.textAlign='center';
+  ctx.fillText('升力 F↑', ax, midY-aLen*0.5-7);
+  ctx.restore();
+}
+
+function drawFlowHint(){
+  ctx.save();
+  for(let i=0;i<5;i++){
+    const y=H*0.14+i*H*0.17;
+    const t=(animFrame*0.28+i*0.22)%1;
+    ctx.globalAlpha=0.5-t*0.42;
+    ctx.fillStyle='rgba(60,100,160,0.6)';
+    ctx.font=`12px 'Noto Sans SC',sans-serif`;
+    ctx.fillText('→',t*W*0.10,y);
+  }
+  ctx.globalAlpha=0.55;
+  ctx.font=`10px 'Noto Sans SC',sans-serif`;
+  ctx.fillStyle='rgba(50,90,150,0.55)';
+  ctx.fillText('来流方向',6,14);
+  ctx.restore();
+}
+
+function updateParams(el){
+  if(el){
+    const min=+el.min,max=+el.max,val=+el.value;
+    el.style.setProperty('--pct',((val-min)/(max-min)*100).toFixed(1)+'%');
+  }
+  params.speed  =+document.getElementById('slider-speed').value;
+  params.aoa    =+document.getElementById('slider-aoa').value;
+  params.camber =+document.getElementById('slider-camber').value;
+  document.getElementById('val-speed').textContent  =params.speed;
+  document.getElementById('val-aoa').textContent    =params.aoa;
+  document.getElementById('val-camber').textContent =params.camber;
+
+  const aero=calcAero();
+  document.getElementById('v-top').textContent=aero.vTop.toFixed(1);
+  document.getElementById('v-bot').textContent=aero.vBot.toFixed(1);
+  document.getElementById('p-top').textContent=aero.pTop.toFixed(0);
+  document.getElementById('p-bot').textContent=aero.pBot.toFixed(0);
+
+  const scale=Math.max(Math.abs(aero.pTop),Math.abs(aero.pBot),50);
+  document.getElementById('p-top-bar').style.width=Math.min(95,(Math.abs(aero.pTop)/scale)*90).toFixed(0)+'%';
+  document.getElementById('p-bot-bar').style.width=Math.min(95,(Math.abs(aero.pBot)/scale)*90).toFixed(0)+'%';
+  document.getElementById('p-top-bar-val').textContent=aero.pTop.toFixed(0)+' Pa';
+  document.getElementById('p-bot-bar-val').textContent=aero.pBot.toFixed(0)+' Pa';
+
+  const lift=Math.max(0,aero.deltaP);
+  document.getElementById('delta-p').textContent=lift.toFixed(0)+' Pa';
+  document.getElementById('lift-val').textContent=lift.toFixed(0)+' Pa';
+  document.getElementById('lift-bar').style.width=Math.min(100,(lift/700)*100).toFixed(1)+'%';
+}
+
+function toggleLayer(name){
+  layers[name]=!layers[name];
+  document.getElementById('btn-'+name).classList.toggle('active',layers[name]);
+}
+
+function initSliders(){
+  ['slider-speed','slider-aoa','slider-camber'].forEach(id=>{
+    const el=document.getElementById(id);
+    el.style.setProperty('--pct',(((+el.value-+el.min)/(+el.max-+el.min))*100).toFixed(1)+'%');
+  });
+}
+
+function loop(){ drawFrame(); updateParams(null); requestAnimationFrame(loop); }
+
+window.addEventListener('resize',()=>{ clearTimeout(window._rt); window._rt=setTimeout(resize,80); });
+resize(); initSliders(); loop();
+</script>
+</body>
+</html>
